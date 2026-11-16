@@ -23,7 +23,7 @@ Permitir que **o cliente agende sozinho, sem criar conta**, um serviço em um ho
 | Regras de negócio bem resolvidas | Cálculo de disponibilidade (passo de 15 min, intervalo, pausas, antecedências, ajustes por dia), bloqueio de alteração com conflito, snapshot |
 | Testes automatizados | Unitários de domínio (100%), integração com Postgres real, contrato e concorrência |
 | Boas práticas de API | Contract-first com OpenAPI 3.1, validação a partir do contrato, erros padronizados, rate limit |
-| Deploy funcionando | Front na Vercel, API no Render, Postgres no Supabase e CI no GitHub Actions, com custo zero |
+| Infraestrutura na AWS | API em ECS Fargate atrás de um ALB, worker de e-mail em Lambda, PostgreSQL no RDS, ElastiCache, SQS e CloudWatch, executados no emulador oficial da AWS (ver ADR 0001); CI no GitHub Actions |
 
 ## 3. Atores
 
@@ -31,7 +31,7 @@ Permitir que **o cliente agende sozinho, sem criar conta**, um serviço em um ho
 |---|---|---|
 | **Cliente** | Pessoa que quer ser atendida. **Não tem conta.** Identifica-se por nome e telefone (obrigatórios) e e-mail (opcional). | Ver serviços, ver horários disponíveis, agendar, cancelar o próprio agendamento (pelo link do e-mail ou pelo site no mesmo navegador) |
 | **Barbeiro/Admin** | Dono da barbearia e único barbeiro. Um único usuário, criado via seed. | Fazer login, gerenciar serviços, definir o horário semanal (com pausas), ajustar dias específicos e folgas, configurar regras (intervalo, antecedências, limite por telefone), ver a agenda, cancelar agendamentos, receber aviso de novo agendamento |
-| **Sistema (job)** | Processo disparado periodicamente por um cron externo. | Enviar lembretes por e-mail |
+| **Sistema (job)** | Processo disparado periodicamente por um agendador (mecanismo a definir em ADR). | Enviar lembretes por e-mail |
 
 Não existe recepcionista.
 
@@ -67,7 +67,7 @@ Não existe recepcionista.
 ## 6. Restrições
 
 - **Prazo**: ~60 horas (30 h/semana × 2 semanas).
-- **Custo zero**: Vercel (front), Render free (API, com *cold start* aceito), Supabase free (somente Postgres), Gmail API via HTTPS (e-mail) e GitHub Actions (CI e cron).
+- **Infraestrutura AWS no emulador oficial**: o projeto serve para praticar AWS e roda no emulador, sem conta real. Serviços: ECS Fargate + ALB (API), Lambda (worker de e-mail), RDS PostgreSQL, ElastiCache, SQS e CloudWatch (ver ADR 0001). E-mail via Gmail API (HTTPS); CI no GitHub Actions. A hospedagem do front está a definir.
 - **Idioma**: documentação em português; código, rotas, campos e códigos de erro em inglês.
 - **Repositórios separados**: `barbershop-api` (contém o contrato OpenAPI) e o repositório do front (React + Vite, com cliente e admin na mesma aplicação).
 

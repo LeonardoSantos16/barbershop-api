@@ -9,7 +9,7 @@
 2. **Contrato primeiro**: alterar `openapi.yaml`, passar no Spectral e revisar.
 3. **Front contra o mock** (Prism) com client gerado, em paralelo à API.
 4. **Testes de domínio** → implementação → testes de integração.
-5. **Deploy** na `main` e verificação no ambiente publicado.
+5. **Deploy** no ambiente AWS (emulador oficial) e verificação nesse ambiente.
 6. **Arquivar o change** no OpenSpec, atualizando as specs consolidadas.
 
 ---
@@ -17,13 +17,14 @@
 ## Núcleo
 
 ### Fatia 0 — Esqueleto andando · ~6h
-**Entrega:** os dois repositórios publicados e conversando.
+**Entrega:** os dois repositórios conversando, com a API rodando no ambiente AWS (emulador).
 - Repositórios, TypeScript strict, lint e CI (Spectral, lint, tipos, testes, cobertura).
 - `openapi.yaml` inicial com `GET /v1/health`; validação pelo contrato no Fastify.
-- Conexão com o Supabase, ferramenta de migrations e Testcontainers funcionando.
-- Front com Vite publicado na Vercel, chamando `/health` via client gerado.
-- **Pré-requisito:** ADR de multi-tenant (Q5) e ADR de stack.
-- **Cobre:** RNF01–RNF04, RNF12, RNF17, RNF26–RNF29.
+- Infraestrutura base no emulador: VPC (subnets públicas e privadas, security groups), RDS PostgreSQL, ECS Fargate atrás do ALB com health check em `/health` e logs no CloudWatch.
+- Conexão com o RDS, ferramenta de migrations e Testcontainers funcionando.
+- Front com Vite chamando `/health` via client gerado (hospedagem a definir).
+- **Pré-requisito:** ADR de multi-tenant (Q5), ADR de stack e verificação do suporte do emulador a ECS, ALB e RDS. O ADR de compute já existe (ADR 0001).
+- **Cobre:** RNF01–RNF04, RNF12, RNF17, RNF19, RNF26–RNF30.
 
 ### Fatia 1 — Cliente agenda um horário · ~8h  ⭐ menor fatia de valor
 **Entrega:** o cliente escolhe um serviço, vê horários livres e agenda. Serviços, horário semanal e configurações vêm do **seed** (sem tela de admin ainda).
@@ -54,10 +55,12 @@
 ### Fatia 6 — Cancelamento pelo cliente e e-mails · ~7h
 **Entrega:** o cliente recebe o e-mail de confirmação com o link, cancela pelo link e é avisado quando o barbeiro cancela.
 - Adaptador `EmailSender` com Gmail API (setup OAuth ~1h); token de uso único, armazenado como hash, que expira no início do agendamento; tela de cancelamento.
-- **Cobre:** RF04, RF05, RF15, RF16 · RN17, RN19, RN21 · RNF14, RNF21.
+- Envio assíncrono: a API publica na fila SQS e o worker em Lambda (fora da VPC) consome e envia, com DLQ.
+- **Cobre:** RF04, RF05, RF15, RF16 · RN17, RN19, RN21 · RNF14, RNF21, RNF32.
 
 ### Fatia 7 — Proteções contra abuso · ~2h
 **Entrega:** rate limit por IP e limite configurável de agendamentos ativos por telefone.
+- ElastiCache provisionado no emulador, em subnet privada, como contador compartilhado do rate limit.
 - **Cobre:** RN10 · RNF15.
 
 **Subtotal do núcleo: ~46h.**
@@ -76,12 +79,14 @@
 
 | Fatia | Entrega | ~h | Cobre |
 |---|---|---|---|
-| 9 | "Meus próximos agendamentos" via localStorage, com botão de cancelar | 2 | RF06 |
+| 9 | "Meus próximos agendamentos" via localStorage, com botão de cancelar e cache no ElastiCache | 2 | RF06 · RNF33 |
 | 10 | Aviso de novo agendamento em tempo real no painel (SSE ou polling) | 3 | RF14 · RN23 |
-| 11 | Lembrete por e-mail 2h antes: endpoint interno idempotente + workflow agendado no GitHub Actions | 4 | RF17 · RN22 · RNF16, RNF31 |
+| 11 | Lembrete por e-mail 2h antes: job idempotente disparado por um agendador (mecanismo a definir em ADR) | 4 | RF17 · RN22 · RNF16, RNF31 |
 | 12 | Testes de contrato com Schemathesis no CI | 3 | RNF07 |
 
 **Total com todas as fatias: ~61h.** O plano não tem folga: os extras só entram se o núcleo fechar no prazo.
+
+> As estimativas foram feitas para o plano anterior (Render, Supabase e Vercel) e **ainda não foram revisadas** para a infraestrutura AWS. Devem crescer principalmente as fatias 0 (VPC, RDS, ECS e ALB), 6 (SQS e worker Lambda) e 7 (ElastiCache).
 
 ---
 

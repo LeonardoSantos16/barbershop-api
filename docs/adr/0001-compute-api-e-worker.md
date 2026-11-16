@@ -84,4 +84,3 @@ Restrições relevantes:
 - Verificar o suporte do emulador a ECS/Fargate, ALB e ao event source mapping SQS→Lambda.
 - Disparo do job de lembretes (RF17/RN22): EventBridge Scheduler no lugar do cron do GitHub Actions (RNF31), em ADR próprio.
 - RF14 (tempo real): decidir na fatia correspondente. Com Fargate, SSE é viável; com mais de uma task, exige pub/sub.
-- Atualizar o RNF26 e a seção de riscos de `requisitos.md`, além da seção de restrições de `visao.md`.

@@ -35,7 +35,7 @@
 |---|---|---|---|
 | RF15 | Enviar e-mail de confirmação com link de cancelamento | RN21 | Núcleo |
 | RF16 | Enviar e-mail de aviso quando o barbeiro cancela | RN21 | Núcleo |
-| RF17 | Enviar lembretes por e-mail a partir de um endpoint interno disparado por cron | RN22 | Extra |
+| RF17 | Enviar lembretes por e-mail a partir de um job disparado periodicamente por um agendador | RN22 | Extra |
 
 ### Futuro (registrado, não implementar)
 
@@ -82,40 +82,42 @@
 |---|---|
 | RNF13 | Senha do admin armazenada com hash forte (argon2 ou bcrypt); autenticação via JWT com expiração. |
 | RNF14 | Token de cancelamento aleatório (≥ 128 bits), armazenado **como hash** no banco. |
-| RNF15 | Rate limit por IP no endpoint de criação de agendamento (limite configurável por variável de ambiente). |
+| RNF15 | Rate limit por IP no endpoint de criação de agendamento (limite configurável por variável de ambiente), com contador compartilhado no ElastiCache. |
 | RNF16 | Endpoint interno de jobs protegido por segredo compartilhado (header). |
 | RNF17 | Segredos só em variáveis de ambiente; nada sensível no repositório. |
 | RNF18 | CORS restrito ao domínio do front. |
-| RNF19 | Supabase usado **somente como Postgres**; Data API (PostgREST) desativada e Supabase Auth não utilizado. |
+| RNF19 | RDS e ElastiCache em subnets privadas, acessíveis **somente** a partir do security group da API (ver ADR 0001). |
 
 ### Arquitetura
 
 | ID | Requisito |
 |---|---|
 | RNF20 | Domínio isolado de infraestrutura (regras testáveis sem banco e sem HTTP). |
-| RNF21 | Envio de e-mail atrás de uma interface (`EmailSender`); implementação via **Gmail API (HTTPS)**, porque o Render free bloqueia SMTP. |
+| RNF21 | Envio de e-mail atrás de uma interface (`EmailSender`); implementação via **Gmail API (HTTPS)**. |
 | RNF22 | Preparação para multi-tenant conforme ADR (ver `visao.md` §7). |
 | RNF23 | Datas armazenadas em UTC; regras avaliadas em America/Sao_Paulo. |
 | RNF24 | Migrations versionadas e seed reprodutível (admin, serviços iniciais e horário padrão). |
 | RNF25 | Decisões relevantes registradas como ADR; cada fatia especificada como *change* no OpenSpec. |
+| RNF32 | E-mails enviados de forma assíncrona: a API publica na fila SQS e o worker (Lambda, fora da VPC) consome e envia. A mensagem carrega todos os dados do e-mail; falhas repetidas vão para uma DLQ. |
+| RNF33 | Cache (ElastiCache) **somente** na consulta de "meus agendamentos" do cliente, invalidado quando o cliente faz uma requisição que não é GET. Endpoints do admin e de horários disponíveis **nunca** são cacheados. |
 
 ### Operação e deploy
 
 | ID | Requisito |
 |---|---|
-| RNF26 | **Custo zero**: Vercel (front), Render free (API), Supabase free (Postgres), Gmail API (e-mail), GitHub Actions (CI e cron). |
-| RNF27 | CI no GitHub Actions em todo PR: lint do contrato, lint, tipos, testes e cobertura. Deploy automático na `main`. |
-| RNF28 | Endpoint `/health` (API e conexão com o banco). |
-| RNF29 | Logs estruturados (pino) com id de requisição. |
-| RNF30 | *Cold start* do Render free (~1 min) é aceito; o front mostra um estado de carregamento adequado. |
-| RNF31 | O cron (GitHub Actions) chama o endpoint de lembretes periodicamente (ex.: a cada 10 min); o processamento é idempotente e tolera atraso e falhas. |
+| RNF26 | **Infraestrutura AWS no emulador oficial**: ECS Fargate + ALB (API), Lambda (worker de e-mail), RDS PostgreSQL, ElastiCache, SQS e CloudWatch (ver ADR 0001). Gmail API (e-mail) e GitHub Actions (CI). |
+| RNF27 | CI no GitHub Actions em todo PR: lint do contrato, lint, tipos, testes e cobertura. Estratégia de deploy no ambiente AWS a definir. |
+| RNF28 | Endpoint `/health` (API e conexão com o banco), usado pelo health check do ALB e do ECS. |
+| RNF29 | Logs estruturados (pino) com id de requisição, enviados ao CloudWatch Logs. |
+| RNF30 | A API mantém uma task Fargate sempre em execução, sem *cold start*. O *cold start* é aceito apenas no worker (Lambda), que é assíncrono. |
+| RNF31 | Um agendador dispara o job de lembretes periodicamente (ex.: a cada 10 min; mecanismo a definir em ADR); o processamento é idempotente e tolera atraso e falhas. |
 
 ## Riscos conhecidos
 
 | Risco | Mitigação |
 |---|---|
-| GitHub Actions desativa workflows agendados após 60 dias sem atividade no repositório | Documentar no README; reativar manualmente ou fazer commits periódicos |
-| Supabase free pausa o projeto após ~1 semana sem uso | O cron de lembretes acessa o banco periodicamente |
-| Planos gratuitos mudam (Render, Supabase, Vercel) | Infraestrutura isolada por variáveis de ambiente; trocar de provedor = trocar a URL |
+| O emulador não suportar ou não reproduzir fielmente algum serviço (ex.: ECS, ALB, SQS→Lambda) | Verificar a cobertura do emulador antes de adotar cada serviço; registrar divergências em ADR |
+| Custo em uma conta AWS real (~US$ 64/mês pela estimativa do ADR 0001) | Executar no emulador; o custo é aceito apenas se houver deploy real |
+| API com uma única task, sem alta disponibilidade | Aceito para o escopo; para HA, 2 tasks em AZs diferentes (ADR 0001) |
 | E-mails do Gmail caírem no spam | Aceito para portfólio; adaptador substituível (RNF21) |
 | Prazo de 60h | Fatias ordenadas por valor; extras e concorrência têm ordem de corte definida (ver `roadmap.md`) |
